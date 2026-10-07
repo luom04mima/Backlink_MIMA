@@ -56,7 +56,27 @@ CAPTCHA_PAT = re.compile(
     r"security checkpoint|vercel security|security verification|"
     r"(failed to )?verify (your |you are using a )?browser|verifying you are human|"
     r"perimeterx|datadome|incapsula|bot protection|"
+    # AWS WAF (CloudFront): mystrikingly tra 202 "Human Verification" sau vai
+    # request lien tiep, hoac 403 "The request could not be satisfied".
+    r"human verification|request could not be satisfied|"
     r"enable javascript and cookies to continue)", re.I)
+
+
+def la_trang_chan_bot(sig):
+    """Trang nay co phai man hinh chan bot that khong?
+
+    Khop mau o TIEU DE, hoac trang ngan (duoi nguong TRANG_RONG) ma noi dung
+    khop mau. Khop o than mot trang dai thi KHONG tinh: trang that hay nhac toi
+    captcha. Do ngay 2026-10-04: webtretho chuyen ve trang dang nhap 927 ky tu
+    co dong "duoc bao ve boi reCAPTCHA" o chan trang -> tung ra BI_CHAN_CAPTCHA
+    thay vi tuong dang nhap. Trang chan that deu ngan: Cloudflare 41 ky tu,
+    padlet 93, Vercel 249; freeicons 723 ky tu nhung tieu de da khop.
+    """
+    title = sig.get("title") or ""
+    if CAPTCHA_PAT.search(title):
+        return True
+    return (sig.get("text_len", 0) < 400
+            and bool(CAPTCHA_PAT.search(title + " " + (sig.get("snippet") or ""))))
 
 # Rut gon link / trang trung gian. Tach lam hai:
 #   HOST    - so khop dung ten mien (khong dung chuoi con, vi "t.co" nam ngay
@@ -525,8 +545,13 @@ def diagnose(res, page, cfg_js_forced=False, outbound_limit=150, loose=False):
 
     # ---------------------------------------------------------- khong thay link
     if res.status == "NOT_FOUND":
-        if CAPTCHA_PAT.search(blob):
+        if la_trang_chan_bot(page):
             return _pack("BI_CHAN_CAPTCHA", res)
+        # 202: AWS WAF tra 202 kem trang thu thach JS, khong phai trang that.
+        if page.get("http_render") in (202, 401, 403, 429, 503):
+            # Chromium bi tu choi ma trang khong thay link: dang doc trang chan,
+            # khong phai trang that da go link.
+            return _pack("HTTP_403_CHAN_BOT", res)
         if LOGIN_PAT.search(blob):
             # Luot HTTP tho gap tuong dang nhap thi chua chac - nhieu site tra
             # khung dang nhap cho client la roi moi ve noi dung that bang JS.
@@ -735,7 +760,7 @@ def goc_nhin_google(page):
         return G_CHAN
     sig = gb.get("sig") or {}
     blob = ((sig.get("title") or "") + " " + (sig.get("snippet") or ""))[:6000]
-    if CAPTCHA_PAT.search(blob) or LOGIN_PAT.search(blob):
+    if la_trang_chan_bot(sig) or LOGIN_PAT.search(blob):
         return G_CHAN
     if gb.get("found"):
         return G_THAY
@@ -833,7 +858,7 @@ def nhan_googlebot(res, page, g):
         return "khong ro - khong phai trang web"
     sig = gb.get("sig") or {}
     blob = ((sig.get("title") or "") + " " + (sig.get("snippet") or ""))[:6000]
-    if CAPTCHA_PAT.search(blob) or LOGIN_PAT.search(blob):
+    if la_trang_chan_bot(sig) or LOGIN_PAT.search(blob):
         return "khong ro - trang chan bot / doi dang nhap"
     return "khong ro - trang gan nhu trong"
 

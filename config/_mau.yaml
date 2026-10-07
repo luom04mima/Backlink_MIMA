@@ -199,6 +199,14 @@ js:
   # Cach kiem chung sau khi nang so tab: loc cot diag_code trong file ket qua,
   # HTTP_429 phai van bang 0. Con 429 nghia la dang ban qua nhanh -> ha xuong.
   concurrency: auto
+  # Luot 3 - mo lai link bi chan bot (Cloudflare, Vercel, AWS WAF) bang
+  # Chromium CO CUA SO, cho trang chan tu qua roi kiem tra binh thuong.
+  # Headless bi chan gan het, cua so that thi qua. Bat len se hien icon
+  # Chromium tren taskbar vai phut. May khong co man hinh thi tu bo qua.
+  cua_so_that:
+    bat: false
+    cho_toi_da: 30   # giay
+    so_tab: 2
 
 ingest:
   # Tab khong chua link. CHU Y: so khop theo CHUOI CON va KHONG bo dau tieng

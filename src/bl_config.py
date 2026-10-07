@@ -59,6 +59,10 @@ DEFAULTS = {
         # duoi day thi moi mo Chromium o luot 2 - nhanh hon nhieu so voi render
         # tat ca, ma van khong bo sot trang can JS.
         "escalate": True,
+        # Luot 3: mo lai link bi chan bot bang Chromium CO CUA SO. Mac dinh tat
+        # vi no bat cua so that len may - config du an tu bat. Xem checker.py,
+        # ham cua_so_that().
+        "cua_so_that": {"bat": False, "cho_toi_da": 30, "so_tab": 2},
     },
     "ingest": {
         "drop_sheets": [],

@@ -8,9 +8,11 @@ tien -> xuat CSV + XLSX to mau -> so sanh voi lan chay truoc -> in bao cao.
 """
 
 import asyncio
+import csv
 import shlex
 import sys
 from collections import Counter, defaultdict
+from dataclasses import fields
 from datetime import date
 from pathlib import Path
 
@@ -174,8 +176,32 @@ def _do_ingest(cfg, dry_run=False, url=""):
 
 
 # ------------------------------------------------------------------ buoc check
-def _do_check_tier(cfg, all_rows, targets, tier, limit, force_js, no_js):
+def _csv_moi_nhat(cfg, tier):
+    """File ket qua moi nhat cua tier, KE CA hom nay."""
+    d = Path(cfg.output["dir"])
+    cands = sorted(d.glob("*_%s_tier%s.csv" % (cfg.site_name, tier))) if d.exists() else []
+    return cands[-1] if cands else None
+
+
+def _do_check_tier(cfg, all_rows, targets, tier, limit, force_js, no_js,
+                   chi_check_tay=False):
     rows = [r for r in all_rows if str(r["tier"]) == str(tier)]
+    cu = None
+    if chi_check_tay:
+        # Chi chay lai dong dang CHECK_TAY trong file moi nhat, roi tron ket qua
+        # moi vao dung file do - ghi rieng phan nho thi file tier hom nay chi con
+        # vai chuc dong, mat het phan da check.
+        p = _csv_moi_nhat(cfg, tier)
+        if p is None:
+            console.print("  [dim]tier %s: chua co ket qua nao de chay lai, bo qua[/dim]"
+                          % tier)
+            return []
+        with open(p, newline="", encoding="utf-8-sig") as f:
+            cu = list(csv.DictReader(f))
+        tay = {r["source_url"] for r in cu if r.get("ket_luan") == "CHECK_TAY"}
+        rows = [r for r in rows if r["source_url"] in tay]
+        console.print("  [dim]tier %s: chay lai %d dong CHECK_TAY trong %s[/dim]"
+                      % (tier, len(rows), p.name))
     if limit:
         rows = rows[:limit]
     if not rows:
@@ -241,6 +267,17 @@ def _do_check_tier(cfg, all_rows, targets, tier, limit, force_js, no_js):
                       "Googlebot, ket luan khong doi duoc[/dim]" % bo)
 
     _in_googlebot(results)
+    n = getattr(checker.run_check, "cua_so", 0)
+    if n:
+        go = sum(1 for r in results if r.rendered == "cua so that"
+                 and r.ket_luan != "CHECK_TAY")
+        console.print("  [dim]luot 3 cua so that: mo lai %d link bi chan, "
+                      "%d link da co ket luan[/dim]" % (n, go))
+    if cu is not None:
+        moi = {r.source_url: r for r in results}
+        ten = [f.name for f in fields(checker.Result)]
+        results = [moi.get(r["source_url"])
+                   or checker.Result(**{k: r.get(k, "") for k in ten}) for r in cu]
     return results
 
 
@@ -315,6 +352,7 @@ def run(
     no_diff: bool = typer.Option(False, "--no-diff", help="Bo qua buoc so sanh voi lan chay truoc"),
     no_ghichu: bool = typer.Option(False, "--no-ghichu", help="Bo qua buoc xuat file goc co chu thich"),
     no_doisoat: bool = typer.Option(False, "--no-doisoat", help="Bo qua buoc xuat file doi soat"),
+    chi_check_tay: bool = typer.Option(False, "--chi-check-tay", help="Chi chay lai dong Phai check tay trong ket qua moi nhat, tron vao file do"),
 ):
     """Chay tron goi: nap du lieu → check tung tier → xuat bao cao."""
     tui.show_banner()
@@ -371,7 +409,8 @@ def run(
     results_by_tier, all_results, written = {}, [], []
 
     for t in tiers_to_run:
-        rs = _do_check_tier(cfg, all_rows, targets, t, limit, js, no_js)
+        rs = _do_check_tier(cfg, all_rows, targets, t, limit, js, no_js,
+                            chi_check_tay)
         if not rs:
             continue
         results_by_tier[str(t)] = rs
@@ -476,13 +515,15 @@ def check(
     limit: int = typer.Option(None, "--limit", "-n"),
     js: bool = typer.Option(False, "--js"),
     no_js: bool = typer.Option(False, "--no-js"),
+    chi_check_tay: bool = typer.Option(False, "--chi-check-tay"),
 ):
     """Chi check, khong nap lai du lieu (tuong duong run --skip-ingest)."""
     # Goi thang ham nen phai truyen du moi co: gia tri mac dinh la
     # typer.Option (truthy), bo sot la thanh "bo qua" ngam.
     # ghichu/doisoat deu tai lai Google Sheet nen 'check' bo qua ca hai.
     run(config_path=config_path, tier=tier, limit=limit, skip_ingest=True,
-        js=js, no_js=no_js, no_diff=False, no_ghichu=True, no_doisoat=True)
+        js=js, no_js=no_js, no_diff=False, no_ghichu=True, no_doisoat=True,
+        chi_check_tay=chi_check_tay)
 
 
 @app.command()

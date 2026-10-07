@@ -192,6 +192,18 @@ js:
   # Sau khi doi, kiem chung bang cach loc cot diag_code xem HTTP_429 con 0.
   # ------------------------------------------------------------------
   concurrency: 6
+  # ------------------------------------------------------------------
+  # LUOT 3 - CUA SO THAT. Link van bi chan sau luot 2 (Cloudflare "Just a
+  # moment", Vercel, AWS WAF...) duoc mo lai bang Chromium CO CUA SO, cho
+  # trang chan tu qua roi kiem tra binh thuong (con link, noindex, nofollow,
+  # canonical). Khong giai captcha, khong dung API ngoai.
+  # Do ngay 2026-10-04: headless ket 9/10 domain, cua so that qua 9/9 sau
+  # 1-11 giay. Cua so bi day ra ngoai man hinh, chi thay icon tren taskbar.
+  # May khong co man hinh (server) thi luot nay tu bo qua kem canh bao.
+  cua_so_that:
+    bat: true
+    cho_toi_da: 30   # giay cho trang chan tu qua, het thi doc nguyen trang dang co
+    so_tab: 2        # it tab thoi - moi tab la mot cua so Chromium that
 
 ingest:
   # Tab trong Google Sheet chua tu khoa nay se bi bo qua hoan toan.

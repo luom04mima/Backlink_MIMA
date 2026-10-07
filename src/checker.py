@@ -209,7 +209,14 @@ def analyse(html, final_url, res, target_norms, target_domains,
     canon = soup.find("link", rel=lambda v: v and "canonical" in v)
     canon_ok = True
     if canon and canon.get("href"):
-        canon_ok = U.normalize(urljoin(final_url, canon["href"])) == U.normalize(final_url)
+        # Gop "//" trong duong dan truoc khi so: raovat49 khai canonical
+        # "raovat49.com//s/<bai>" - URL do tra trang loi 1.4KB, con ban mot dau
+        # gach chinh la trang dang doc. Canonical tro vao trang hong thi Google
+        # bo qua goi y do, index trang that. Khong gop thi 12 dong tung ket
+        # thanh CANONICAL_CHUA_RO.
+        cu = urlparse(urljoin(final_url, canon["href"]))
+        cu = cu._replace(path=re.sub(r"/{2,}", "/", cu.path)).geturl()
+        canon_ok = U.normalize(cu) == U.normalize(final_url)
     res.indexable = "no" if (noindex or not canon_ok) else "yes"
     if noindex:
         res.note = ("noindex (%s)" % ", ".join(nguon_robots)) if nguon_robots else "noindex"
@@ -682,6 +689,10 @@ def finalize(res, page, cfg, use_js):
     res.canh_bao_them = ", ".join(dict.fromkeys(c for c in them if c != code))
     res.nguoi_xem = kq["nguoi_xem"]
     res.googlebot = kq["googlebot"] if cfg.googlebot.get("check", True) else ""
+    if page.get("cua_so") and res.googlebot.startswith("khong ro"):
+        # Googlebot gia bi chan vi IP may nay khong phai IP Google - khong noi
+        # len gi ve Googlebot that. Xac minh bang Rich Results Test.
+        res.googlebot = "chua xac minh - chan Googlebot gia (IP khong phai Google)"
     res.yeu_cau = D.yeu_cau(code, res.ket_luan)
     res.vi_tri_link = (kq["sig"] or {}).get("vi_tri", "") if res.status == "FOUND" else ""
 
@@ -775,9 +786,29 @@ async def _tab_moi(ctx, page_obj):
 
 
 async def _doc_trang(page_obj, res, tn, td, tl, page, wait_after, timeout,
-                     wait_until):
-    """Mo mot URL bang Chromium va doc noi dung that. Ben goi boc trong tran."""
+                     wait_until, cho_chan=0):
+    """Mo mot URL bang Chromium va doc noi dung that. Ben goi boc trong tran.
+
+    cho_chan > 0 (luot 3): cho trang chan tu qua roi doc luon trang dang mo,
+    KHONG goto lan hai - site dang gioi han tan suat (AWS WAF mystrikingly)
+    se chan lai ngay lan tai thu hai. Ma HTTP / X-Robots-Tag lay tu lan dieu
+    huong CUOI cua khung chinh (trang that sau khi trang chan tu tai lai), khong
+    phai tu trang chan. Tra ve so giay da cho.
+    """
+    dieu_huong = []
+
+    def nghe(r):
+        if r.request.is_navigation_request() and r.frame == page_obj.main_frame:
+            dieu_huong.append(r)
+
+    if cho_chan:
+        page_obj.on("response", nghe)
     resp = await page_obj.goto(res.source_url, wait_until=wait_until, timeout=timeout)
+    giay = 0
+    if cho_chan:
+        giay = await _cho_qua_chan(page_obj, cho_chan)
+        page_obj.remove_listener("response", nghe)
+        resp = dieu_huong[-1] if dieu_huong else resp
     # Cho them mot nhip cho JS kip ve noi dung. Nhieu nen tang (penzu, notion,
     # mn.co) tra ve khung rong o thoi diem DOM san sang.
     if wait_after:
@@ -795,9 +826,14 @@ async def _doc_trang(page_obj, res, tn, td, tl, page, wait_after, timeout,
         res.status, res.http_code = "PAGE_ERROR", str(resp.status)
         res.note = "HTTP %s" % resp.status
         page.pop("error", None)
-        return
+        return giay
     page.pop("error", None)
     page.pop("bi_chan", None)
+    # Ma HTTP ma Chromium nhan. Trang chan cua WAF khong phai luc nao cung co
+    # chu "captcha": CloudFront tra 403 "The request could not be satisfied"
+    # (513 ky tu) cho Chromium an - thieu ma nay thi 11 trang mystrikingly van
+    # con link tung ra LINK_BI_GO (do ngay 2026-10-04).
+    page["http_render"] = resp.status if resp is not None else 0
     _redirect_flags(res.source_url, res.final_url, page)
     xr = (resp.headers.get("x-robots-tag") or "") if resp is not None else ""
     ok, page2 = analyse(await page_obj.content(), res.final_url, res, tn, td, tl,
@@ -805,6 +841,7 @@ async def _doc_trang(page_obj, res, tn, td, tl, page, wait_after, timeout,
     page.update(page2)
     if not ok:
         res.status = "NOT_FOUND"
+    return giay
 
 
 async def _render_worker(ctx, hang, locks, cfg, use_js, on_js_progress, quiet):
@@ -954,6 +991,145 @@ async def recheck_js(queue, cfg, use_js, on_js_progress=None, quiet=False,
     return True
 
 
+# Ma loi ma luot 3 (cua so that) co the go: tool chua doc duoc noi dung that.
+MA_CUA_SO = ("BI_CHAN_CAPTCHA", "HTTP_403_CHAN_BOT", "CHUA_RENDER_DUOC", "TRANG_RONG")
+
+
+async def _cho_qua_chan(page_obj, cho_toi_da):
+    """Cho trang chan bot tu qua. Tra ve so giay da cho.
+
+    Cloudflare / Vercel / AWS WAF chay thu thach JS roi tu tai lai trang. Trong
+    luc chuyen trang, title()/evaluate() nem loi "context destroyed" - bo qua,
+    cho nhip sau.
+    """
+    for giay in range(1, cho_toi_da + 1):
+        await page_obj.wait_for_timeout(1000)
+        try:
+            title = await page_obj.title()
+            text = await page_obj.evaluate(
+                "() => document.body ? document.body.innerText : ''")
+        except Exception:
+            continue
+        sig = {"title": title, "snippet": text[:1500], "text_len": len(text)}
+        if not D.la_trang_chan_bot(sig) and len(text) >= NGUONG_TRANG_RONG:
+            return giay
+    return cho_toi_da
+
+
+async def _cua_so_worker(ctx, hang, locks, cfg, targets, use_js, cho, tran, quiet):
+    delay = float(cfg.network["per_domain_delay"])
+    timeout = int(cfg.js.get("timeout", 40000))
+    wait_after = int(cfg.js.get("wait_after", 0) or 0)
+    page_obj = await asyncio.wait_for(ctx.new_page(), 60)
+    try:
+        while True:
+            try:
+                res = hang.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            page = res._page
+            tn, td, tl = targets[str(res.tier)]
+            # Doc lai tu dau: tra cac cot ve goc nhin nguoi xem cu, xoa dau vet
+            # cua trang chan (noindex cua trang "Just a moment" nam o cot note).
+            for k, v in page.pop("_nguoi_xem", {}).items():
+                setattr(res, k, v)
+            for k in ("points_to", "anchor_text", "rel", "khop_tang", "note"):
+                setattr(res, k, "")
+            for k in ("render_that_bai", "redirected_off_domain",
+                      "redirected_to_home", "canonical"):
+                page.pop(k, None)
+            async with locks[U.domain_of(res.source_url)]:
+                try:
+                    giay = await asyncio.wait_for(
+                        _doc_trang(page_obj, res, tn, td, tl, page, wait_after,
+                                   timeout, "domcontentloaded", cho_chan=cho), tran)
+                    page["cua_so"] = True
+                    res.rendered = "cua so that"
+                    res.note = "; ".join(x for x in (
+                        res.note, "doc qua cua so that sau %ds" % giay) if x)
+                except Exception as e:
+                    page["error"] = "cua so %s: %s" % (type(e).__name__, e)[:200]
+                    page["render_that_bai"] = True
+                    page_obj = await _tab_moi(ctx, page_obj)
+                await asyncio.sleep(delay)
+            finalize(res, page, cfg, use_js)
+            if not quiet:
+                print("[CUA SO %-18s] %s" % (res.diag_code, res.source_url[:60]),
+                      file=sys.stderr)
+    finally:
+        try:
+            await asyncio.wait_for(page_obj.close(), 10)
+        except Exception:
+            pass
+
+
+async def cua_so_that(results, cfg, targets, locks, use_js, quiet=False, vadns=None):
+    """Luot 3: mo lai link bi chan bot bang Chromium CO CUA SO.
+
+    Headless bi Cloudflare / Vercel / AWS WAF nhan ra va giu o trang cho. Do
+    ngay 2026-10-04 tren 10 domain dang ra BI_CHAN_CAPTCHA: headless (ca che do
+    headless moi) ket 9/10, cua so that qua 9/9 sau 1-11 giay - khong phai giai
+    gi. Qua duoc thi kiem tra BINH THUONG nhu moi link (analyse + diagnose).
+
+    Googlebot gia van bi chan (IP may nay khong phai IP Google), nen phan_xu
+    giu ket luan cua nguoi xem - dung luat strict san co. Cot googlebot ghi ro
+    la chua xac minh. Tra ve so link da mo lai.
+    """
+    cs = cfg.js.get("cua_so_that") or {}
+    if not cs.get("bat"):
+        return 0
+    can = [r for r in results if r.diag_code in MA_CUA_SO]
+    if not can:
+        return 0
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return 0
+    cho = int(cs.get("cho_toi_da", 30))
+    # Hai lan goto + cho qua chan + mot nhip wait_after (+ 1 nhip phu).
+    tran = cho + _tran_render(cfg) + int(cfg.js.get("timeout", 40000)) / 1000.0
+    so_tab = max(1, min(int(cs.get("so_tab", 2)), len(can)))
+    if not quiet:
+        print("\nLuot 3: mo lai %d link bi chan bang Chromium co cua so (%d tab)..."
+              % (len(can), so_tab), file=sys.stderr)
+    hang = asyncio.Queue()
+    for muc in _xen_ke_domain([(r,) for r in can]):
+        hang.put_nowait(muc[0])
+    # Cua so day ra ngoai man hinh: van la cua so that (Cloudflare can dieu
+    # do), nhung khong che len cong viec cua nguoi dang dung may.
+    args = ["--disable-blink-features=AutomationControlled",
+            "--window-position=-3000,0"]
+    rule = vadns.host_resolver_rules() if vadns is not None else None
+    if rule:
+        args.append(rule)
+    async with async_playwright() as pw:
+        try:
+            b = await pw.chromium.launch(headless=False, args=args)
+        except Exception as e:
+            print("CANH BAO: khong mo duoc cua so Chromium (%s) -> bo qua luot 3."
+                  % type(e).__name__, file=sys.stderr)
+            return 0
+        try:
+            # KHONG dat user_agent: UA trong config (Chrome/124) lech phien ban
+            # Chromium that la dau hieu bot. Cung khong chan anh/font - trang
+            # thu thach can tai du tai nguyen moi chiu cho qua.
+            ctxs = [await asyncio.wait_for(b.new_context(), 60) for _ in range(so_tab)]
+            loi = await asyncio.gather(
+                *[_cua_so_worker(c, hang, locks, cfg, targets, use_js, cho, tran,
+                                 quiet) for c in ctxs],
+                return_exceptions=True)
+            for e in loi:
+                if isinstance(e, BaseException):
+                    print("CANH BAO: mot cua so dung giua chung: %s: %s"
+                          % (type(e).__name__, e), file=sys.stderr)
+        finally:
+            try:
+                await asyncio.wait_for(b.close(), 30)
+            except Exception:
+                pass
+    return len(can)
+
+
 async def run_check(cfg, rows, targets, use_js, on_progress=None,
                     on_js_start=None, on_js_progress=None, quiet=False):
     """Chay check cho mot danh sach dong. Tra ve list Result da chan doan xong.
@@ -997,6 +1173,8 @@ async def run_check(cfg, rows, targets, use_js, on_progress=None,
     for r in results:
         if not r.diag_code:
             finalize(r, getattr(r, "_page", {}), cfg, use_js)
+    run_check.cua_so = await cua_so_that(results, cfg, targets, locks, use_js,
+                                         quiet, vadns)
     # Canonical khac: mo ban canonical xem co link khong. Chay truoc go_patch
     # vi trang canonical co the nam tren ten mien bi router chan.
     so = await _soat_canonical(results, cfg, targets, locks, use_js, client_kw,
