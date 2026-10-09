@@ -8,15 +8,13 @@
 # =====================================================================
 
 site:
-  name: quangcaominhloi
-  money_domain: quangcaominhloi.vn
+  name: aliorder
+  money_domain: aliorder.vn
 
   # URL dich cu the. Link tro dung mot trong cac URL nay = khop chinh xac.
   # Tro dung domain nhung sai URL -> van tinh FOUND nhung bi gan ma SAI_URL_DICH.
   target_urls:
-    - https://quangcaominhloi.vn/treo-bang-ron-co-phuon-toan-quoc
-    - https://quangcaominhloi.vn/chuoi-nha-phan-phoi-dai-ly
-    - https://quangcaominhloi.vn/roadshow-phuong-tien-giao-thong
+    - https://aliorder.vn/dich-vu
 
   # Cac domain khac cung thuoc so huu (domain phu, rut gon rieng, ban .vn...).
   # Link tro ve day cung duoc tinh la tro ve money site.
@@ -40,7 +38,7 @@ source:
   #   Cac gia tri khac: google_sheet | google_doc | xlsx | csv | local
   #   De url rong -> tool doc thang file 'master_csv' co san trong may.
   type: auto
-  url: "https://docs.google.com/spreadsheets/d/1EgMuAZAMIc5RW8jlIdz-jQgK2uwy_Zl4/edit?gid=1273854646#gid=1273854646"
+  url: "https://docs.google.com/spreadsheets/d/1Qkp3j0s8fS6S7jtkAZpiKZJrTczU_D93/edit?gid=1273854646#gid=1273854646"
   # Chi dung khi lay tu file trong may thay vi tu Google (vd: data/goc.xlsx)
   file: ""
 
@@ -103,8 +101,9 @@ tiers:
     targets: ["tier:2", "tier:1", money, "tier:3"]
     priority: 4
     match:
-      - "Submiss 2.0 tầng 3"
+      - "Submiss web 2.0 tầng 3"
       - "Social Bookmarks DA cao tang 3 "
+      - "tang 3_ profile Submissions"
       - "tang 3_ profile Blog Comments"
       - "tang 3"
       - "tier 3"
@@ -202,8 +201,8 @@ js:
   # May khong co man hinh (server) thi luot nay tu bo qua kem canh bao.
   cua_so_that:
     bat: true
-    cho_toi_da: 30   # giay cho trang chan tu qua, het thi doc nguyen trang dang co
-    so_tab: 2        # it tab thoi - moi tab la mot cua so Chromium that
+    cho_toi_da: 30 # giay cho trang chan tu qua, het thi doc nguyen trang dang co
+    so_tab: 2 # it tab thoi - moi tab la mot cua so Chromium that
 
 ingest:
   # Tab trong Google Sheet chua tu khoa nay se bi bo qua hoan toan.

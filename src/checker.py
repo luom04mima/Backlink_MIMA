@@ -271,7 +271,11 @@ def analyse(html, final_url, res, target_norms, target_domains,
     # dung URL truoc sai URL, dofollow truoc nofollow, hien truoc an. Lay link dau
     # tien thi mot link nofollow o sidebar dung truoc link dofollow trong bai se
     # bien ca dong thanh NOFOLLOW - tinh vao yeu cau bu oan.
+    # Link DUNG TANG khai bao dung truoc het: trang co ca link dung tang lan
+    # link sai tang thi khong duoc ket luan TRO_SAI_TANG chi vi link sai tang
+    # xuat hien truoc.
     xep = sorted(ung_vien, key=lambda x: (
+        bool(declared_label) and x[5] != declared_label,
         x[0], any(r in _rel(x[2]) for r in D.NOFOLLOW_REL), _bi_an(x[2]), x[1]))
     hang, _tt, a, href, raw_href, label = xep[0]
 
@@ -641,6 +645,38 @@ TRUONG_GOC_NHIN = ("status", "points_to", "anchor_text", "rel", "indexable",
                    "khop_tang", "note")
 
 
+def _ten_tang(label):
+    return "MONEY SITE" if label == "money" else label.replace("tier", "TANG")
+
+
+def _o(tab, dong):
+    return 'tab "%s" dong %s' % (tab, dong) if dong else 'tab "%s"' % tab
+
+
+def _sai_tang_ro(res, cfg):
+    """Chan doan TRO_SAI_TANG ghi ro: dang tro tang nao, URL do nam o tab nao
+    dong nao cua file nguon, dung ra phai tro tang nao."""
+    kind, num = cfg.tiers[int(res.tier)].targets[0]
+    dung = "money" if kind == "money" else "tier %s" % num
+    dang = res.khop_tang or "?"
+    if dang == "money":
+        o_dang = "URL cua money site %s" % cfg.money_domain
+    else:
+        o_dang = "; ".join("%s (tang %s)" % (_o(tab, dong), t) for t, tab, dong
+                           in VI_TRI.get(U.normalize(res.points_to), []))
+        o_dang = "URL nay nam o " + (o_dang or "danh sach %s" % _ten_tang(dang))
+    o_dung = ("money site %s" % cfg.money_domain if dung == "money"
+              else "mot URL thuoc " + _ten_tang(dung))
+    why = ('Link VAN CON nhung TRO SAI TANG. Link tang %s nay dang tro vao %s: %s '
+           '(anchor "%s") - %s. SAI: dung ra phai tro vao %s.'
+           % (res.tier, _ten_tang(dang), res.points_to, res.anchor_text, o_dang,
+              _ten_tang(dung)))
+    todo = ("Yeu cau ben cung cap sua link tren bai nay: doi dich tu %s sang %s. "
+            "Tim link tren trang bang Ctrl+F theo URL hoac anchor o tren. Tinh vao "
+            "de nghi bu cho toi khi sua xong." % (res.points_to, o_dung))
+    return why, todo
+
+
 def finalize(res, page, cfg, use_js):
     """Chan doan mot dong. Goi lai bao nhieu lan cung ra dung mot ket qua."""
     res._page, res._use_js = page, use_js
@@ -678,9 +714,11 @@ def finalize(res, page, cfg, use_js):
         # Cau goc noi "dofollow" - che do long khong xet nofollow nen khong
         # khang dinh duoc dieu do.
         why = "Link song, tro dung URL dich (che do loose: khong xet nofollow / noindex)."
+    if code == "TRO_SAI_TANG":
+        why, todo = _sai_tang_ro(res, cfg)
     res.chan_doan = why
     res.viec_can_lam = todo
-    ckq = (kq["sig"] or {}).get("canon_kq") or page.get("canon_kq")
+    ckq =(kq["sig"] or {}).get("canon_kq") or page.get("canon_kq")
     if code.startswith("CANONICAL_") and ckq:
         # URL canonical la bang chung: ben cung cap mo ra la thay ngay.
         res.note = "; ".join(x for x in (res.note, "canonical: " + ckq["url"],
@@ -1189,6 +1227,11 @@ async def run_check(cfg, rows, targets, use_js, on_progress=None,
     return list(results)
 
 
+# URL chuan hoa -> [(tier, tab, dong)] trong file nguon, de chu thich TRO_SAI_TANG
+# chi ra duoc URL dich nam o dau. build_targets() nap lai moi lan chay.
+VI_TRI = {}
+
+
 def build_targets(rows, cfg):
     """Dung tap URL dich cho tung tier.
 
@@ -1200,8 +1243,17 @@ def build_targets(rows, cfg):
     ("money", "tier 2"...) de con ghi duoc vao cot khop_tang. Dich khai truoc
     thang khi mot URL thuoc nhieu tap cung luc."""
     by_tier = defaultdict(list)
+    VI_TRI.clear()
     for r in rows:
         by_tier[str(r["tier"])].append(r["source_url"])
+        o = VI_TRI.setdefault(U.normalize(r["source_url"]), [])
+        o.append((str(r["tier"]), r.get("sheet", ""), r.get("dong", "")))
+        # URL bi loc trung van nam o tab/tier khac trong file ben cung cap: tinh
+        # no thuoc CA cac tier do, khong thi link tro vao no bi bao sai tang oan.
+        for x in filter(None, (r.get("trung_o") or "").split(" ; ")):
+            t, tab, dong = x.split("|")
+            o.append((t, tab, dong))
+            by_tier[t].append(r["source_url"])
 
     targets = {}
     for n, t in cfg.tiers.items():

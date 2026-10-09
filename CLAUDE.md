@@ -50,7 +50,7 @@ backlink-checker/
 │   ├── _mau.yaml                  file mẫu có chú thích đầy đủ
 │   └── checkbacklink.yaml         cấu hình dự án đang chạy
 ├── data/
-│   └── backlinks_master.csv       stt, tier, sheet, source_url
+│   └── backlinks_master.csv       stt, tier, sheet, dong, source_url, trung_o
 ├── src/
 │   ├── cli.py         lệnh `blcheck` — chạy trọn gói, giao diện rich
 │   ├── tui.py         banner, bảng màu, panel terminal
@@ -553,15 +553,10 @@ là "lặp lại" phụ thuộc vào thứ tự tab trong Google Sheet.
 | Link giao trùng            | Cùng một URL đếm hai lần, chỉ tính được một                                                                                                                                                  |
 | Trỏ về money site          | Đó là link của chính mình, không phải backlink                                                                                                                                               |
 | URL hỏng                   | Ô dữ liệu không phải URL mở được                                                                                                                                                             |
-| Chết khi kiểm tra          | 404 / 410 / domain hết hạn / bài bị gỡ / **noindex** / **cần đăng nhập mới xem** / **robots.txt chặn Google** / **Google bị báo 404** / **giấu link với Google** / **vòng lặp chuyển hướng** |
-| Không truyền giá trị (phụ) | Mã lỗi chính là chuyện khác nhưng dòng vẫn dính `noindex` / canonical không có link — bắt qua cột `canh_bao_them`. **Nofollow không tính** — link vẫn đưa traffic về                         |
+| Chết khi kiểm tra          | 404 / 410 / domain hết hạn / bài bị gỡ / **cần đăng nhập mới xem** / **robots.txt chặn Google** / **Google bị báo 404** / **giấu link với Google** / **vòng lặp chuyển hướng** |
+| Không truyền giá trị (cột Noindex) | Trang `noindex` / canonical không có link — mã lỗi chính (dù kết luận là Link mất) hoặc ở cột `canh_bao_them`. **Nofollow không tính** — link vẫn đưa traffic về                         |
 
-Lưu ý cách đọc khoản **"Không truyền giá trị (phụ)"**: `TRANG_NOINDEX`
-khi là **mã lỗi chính** đã được xếp thẳng vào nhóm
-`Link mất` ngay trong file kết quả check, nên nó rơi vào khoản "Chết khi kiểm
-tra". Khoản phụ chỉ còn cộng thêm cho những dòng kết luận là `Link còn` nhưng
-vẫn dính một trong ba thứ đó ở cột `canh_bao_them`. Hai đường không chồng nhau,
-không đếm trùng.
+Cột **Noindex** của file đối soát đếm mọi dòng `TRANG_NOINDEX` / `CANONICAL_KHAC`, kể cả khi đó là mã lỗi chính (kết luận Link mất). Cột **Link chết** chỉ còn trang chết thật. Mỗi dòng chỉ vào một khoản, tổng bù không đổi.
 
 Nhóm **"phải check tay"** cố ý **không** đưa vào yêu cầu bù: tool chưa đọc được
 nội dung thật nên chưa có bằng chứng. Đòi bù bằng số liệu chưa xác minh là tự
@@ -770,7 +765,7 @@ thì thêm vào đó.
 | Mã                              | Tín hiệu                                                                                   | Xử lý                                                                                                                                                                                                                |
 | ------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `LINK_BI_GO`                    | trang sống, đọc được nội dung thật, không còn thẻ `<a>` nào về hệ thống mình               | Admin gỡ link. Đăng lại                                                                                                                                                                                              |
-| `TRO_SAI_TANG`                  | link còn, trỏ đúng hệ thống mình nhưng **sai tầng** so với khai báo                        | Kết luận vẫn là Link còn nhưng **tính vào đề nghị bù**, nên mọi file xuất tô **đỏ** như link mất (`MA_SONG_DOI_BU` trong [diagnose.py](src/diagnose.py)). Sửa khai báo `targets` cho khớp thực tế, hoặc đặt lại link |
+| `TRO_SAI_TANG`                  | link còn, trỏ đúng hệ thống mình nhưng **sai tầng** so với khai báo                        | Kết luận vẫn là Link còn nhưng **tính vào đề nghị bù**, nên mọi file xuất tô **đỏ** như link mất (`MA_SONG_DOI_BU` trong [diagnose.py](src/diagnose.py)). Chú thích ghi rõ URL đích, anchor, URL đó nằm ở **tab nào dòng mấy** của file nguồn, và đúng ra phải trỏ tầng nào (`_sai_tang_ro()` trong [checker.py](src/checker.py)). Trang có cả link đúng tầng thì không bị bắt lỗi; URL có mặt ở nhiều tab (cột `trung_o` của master CSV) được tính thuộc mọi tầng đó. Sửa khai báo `targets` cho khớp thực tế, hoặc đặt lại link |
 | `SAI_URL_DICH`                  | đúng domain, sai trang                                                                     | Sửa về đúng URL nếu còn quyền                                                                                                                                                                                        |
 | `LINK_QUA_TRUNG_GIAN`           | href đi qua rút gọn/redirect                                                               | Ưu tiên link trỏ thẳng                                                                                                                                                                                               |
 | `TRANG_NHIEU_LINK_RA`           | vượt `thresholds.outbound_link_limit`                                                      | Đặc trưng link farm                                                                                                                                                                                                  |

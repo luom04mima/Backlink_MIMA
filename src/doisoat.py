@@ -40,11 +40,11 @@ KHOAN_BU = [
     ("url_hong",    "URL hong / khong hop le",
      "O du lieu khong phai URL mo duoc"),
     ("chet",        "Link da chet khi kiem tra",
-     "404 / 410 / domain het han / bai bi go / noindex / canonical khong co link / "
+     "404 / 410 / domain het han / bai bi go / "
      "can dang nhap moi xem / Google bi bao 404 / link giau voi Google"),
-    ("khong_gia_tri", "Link khong truyen duoc gia tri (phu)",
-     "Ket luan la Link con nhung van dinh noindex / canonical khong co link "
-     "(nofollow khong tinh - van co traffic)"),
+    ("khong_gia_tri", "Link khong truyen duoc gia tri (noindex)",
+     "The <a> van con nhung trang noindex / canonical khong co link - Google "
+     "khong doc toi (nofollow khong tinh - van co traffic)"),
     ("sai_tang",     "Link tro sai tang",
      "Link song va dofollow, nhung roi vao tang khac voi tang ho khai giao"),
 ]
@@ -84,9 +84,9 @@ MA_SAI_TANG = ("TRO_SAI_TANG",)
 # dua traffic ve, nen van tinh la link da giao. CANONICAL_KHAC chi con nghia
 # "ban canonical KHONG co link" (co link thi la CANONICAL_CO_LINK). Khi la ma loi
 # CHINH, hai ma nay da duoc xep thang vao "Link mat" (xem VERDICT trong
-# diagnose.py) nen roi vao khoan "chet". Danh sach duoi day chi con bat truong
-# hop chung xuat hien o cot canh_bao_them. Hai duong khong chong nhau: khoan nay chi cong them cho nhung dong
-# co ket luan "Link con".
+# diagnose.py), nhung van dem vao khoan "khong_gia_tri" (cot Noindex) chu
+# khong vao "chet" - de cot Noindex hien dung so trang noindex. Khi o cot
+# canh_bao_them cua dong "Link con" cung dem vao day. Moi dong chi vao mot khoan.
 MA_KHONG_GIA_TRI = ("TRANG_NOINDEX", "CANONICAL_KHAC")
 
 
@@ -165,7 +165,9 @@ def build(cfg, url="", thu_muc=None):
             elif _sai_tang(k):
                 theo_tab[r["sheet"]]["sai_tang"] += 1
         elif v == D.V_MAT:
-            theo_tab[r["sheet"]]["chet"] += 1
+            ma = (k.get("diag_code") or "").strip()
+            theo_tab[r["sheet"]]["khong_gia_tri" if ma in MA_KHONG_GIA_TRI
+                                 else "chet"] += 1
         else:
             theo_tab[r["sheet"]]["check_tay"] += 1
 
@@ -473,7 +475,8 @@ def _nhom_bu(k):
     Tra ve "Da chet" / "Noindex" / "Sai tang" / None.
     """
     if _ket_luan(k) == D.V_MAT:
-        return "Da chet"
+        return ("Noindex" if (k.get("diag_code") or "").strip() in MA_KHONG_GIA_TRI
+                else "Da chet")
     if _ket_luan(k) != D.V_SONG:
         return None
     if _khong_gia_tri(k):

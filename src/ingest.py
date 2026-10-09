@@ -178,17 +178,18 @@ def tim_cot(rows, want_cols):
 def _cells_from_columns(rows, want_cols, sheet_name):
     """Tim dong tieu de trong 10 dong dau, roi chi lay o thuoc cac cot da chon.
 
-    Tra ve (danh_sach_o, ten_cot_tim_duoc). Neu khong tim thay tieu de nao khop
-    thi tra ve (None, []) de goi y quay lai cach quet toan bo o.
+    Tra ve ([(so_dong, o)...], ten_cot_tim_duoc). so_dong dem tu 1 nhu trong
+    Sheet. Neu khong tim thay tieu de nao khop thi tra ve (None, []) de goi y
+    quay lai cach quet toan bo o.
     """
     i, idx, names = tim_cot(rows, want_cols)
     if i is None:
         return None, []
     cells = []
-    for r in rows[i + 1:]:
+    for so_dong, r in enumerate(rows[i + 1:], i + 2):
         for j in idx:
             if j < len(r) and str(r[j]).strip():
-                cells.append(str(r[j]))
+                cells.append((so_dong, str(r[j])))
     return cells, names
 
 
@@ -235,16 +236,30 @@ def trang_chu_thua(urls):
     return bo
 
 
+def _loai_nguon(cfg, override_url=""):
+    src_type = cfg.source_type
+    url = override_url or cfg.source_url
+    if override_url or src_type in ("auto", "", None):
+        src_type = detect_source(url) if url else "local"
+    return src_type, url
+
+
+def co_so_dong_that(cfg, override_url=""):
+    """Chi so thu tu dong trong nguon nay co trung voi so dong ben cung cap
+    nhin thay khong. Google Docs bo dong trong, master CSV da gop tab -> khong."""
+    src_type, _url = _loai_nguon(cfg, override_url)
+    if src_type == "local":
+        return Path(cfg.source_file or cfg.master_csv).suffix.lower() in (".xlsx", ".xlsm")
+    return src_type in ("google_sheet", "xlsx", "csv")
+
+
 def doc_nguon(cfg, override_url: str = "", giu_kieu: bool = False):
     """Doc nguon GOC ve dung nguyen trang: [(ten_tab, cac_dong)].
 
     Chua loc gi ca - giu nguyen tung tab, tung dong, tung o. build() dung ham
     nay roi moi lam sach; ghichu.py dung chinh no de dung lai file goc.
     """
-    src_type = cfg.source_type
-    url = override_url or cfg.source_url
-    if override_url or src_type in ("auto", "", None):
-        src_type = detect_source(url) if url else "local"
+    src_type, url = _loai_nguon(cfg, override_url)
 
     if src_type == "google_sheet":
         return read_google_sheet(url, giu_kieu)
@@ -260,6 +275,8 @@ def doc_nguon(cfg, override_url: str = "", giu_kieu: bool = False):
 
 def build(cfg, override_url: str = "", verbose: bool = True):
     groups = doc_nguon(cfg, override_url)
+    # So dong trong file goc - bang chung khi doi chieu voi ben cung cap.
+    co_dong = co_so_dong_that(cfg, override_url)
 
     drop_sheets = [s.lower() for s in cfg.ingest["drop_sheets"]]
     drop_domains = [d.lower() for d in cfg.ingest["drop_domains"]]
@@ -307,13 +324,15 @@ def build(cfg, override_url: str = "", verbose: bool = True):
         # Gom URL theo TUNG DONG de luat trang_chu_thua() so duoc cac o cung
         # dong voi nhau. Tab da chon cot thi moi o la mot nhom rieng.
         if cells is None:
-            nhom_o = [[c for c in r if str(c).strip()] for r in sheet_rows]
+            nhom_o = [(i, [c for c in r if str(c).strip()])
+                      for i, r in enumerate(sheet_rows, 1)]
         else:
-            nhom_o = [[c] for c in cells]
+            nhom_o = [(i, [c]) for i, c in cells]
 
         so = per_sheet.setdefault(sheet_name, _so_moi(sheet_name, tier))
         n_sheet = 0
-        for o_cung_dong in nhom_o:
+        for so_dong, o_cung_dong in nhom_o:
+            dong = so_dong if co_dong else ""
             found = []
             for cell in o_cung_dong:
                 f = U.extract_urls(cell)
@@ -345,7 +364,8 @@ def build(cfg, override_url: str = "", verbose: bool = True):
                 if cfg.ingest["dedupe"] and key in seen:
                     stats["trung_lap"] += 1
                     so["trung"] += 1
-                    g_tier, g_tab, g_url = seen[key]
+                    g_tier, g_tab, g_url, g_r = seen[key]
+                    g_r["trung_o"].append((tier, sheet_name, dong))
                     if g_tab == sheet_name:
                         so["trung_trong_tab"] += 1
                     else:
@@ -355,8 +375,10 @@ def build(cfg, override_url: str = "", verbose: bool = True):
                         key, {"url": g_url, "goc": (g_tier, g_tab), "lap": []})
                     ho_so["lap"].append((tier, sheet_name, u))
                     continue
-                seen[key] = (tier, sheet_name, u)
-                rows.append({"tier": tier, "sheet": sheet_name, "source_url": u})
+                r = {"tier": tier, "sheet": sheet_name, "dong": dong,
+                     "source_url": u, "trung_o": []}
+                seen[key] = (tier, sheet_name, u, r)
+                rows.append(r)
                 so["nhan"] += 1
                 n_sheet += 1
         so["domain_rieng"] = len({U.registrable(r["source_url"]) for r in rows
@@ -378,10 +400,14 @@ def write_master(rows, path):
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=["stt", "tier", "sheet", "source_url"])
+        cot = ["stt", "tier", "sheet", "dong", "source_url", "trung_o"]
+        w = csv.DictWriter(f, fieldnames=cot)
         w.writeheader()
         for r in rows:
-            w.writerow({k: r[k] for k in ("stt", "tier", "sheet", "source_url")})
+            d = {k: r.get(k, "") for k in cot}
+            # Cac lan URL lap lai o tab/dong khac: "tier|tab|dong ; ..."
+            d["trung_o"] = " ; ".join("%s|%s|%s" % x for x in r.get("trung_o", []))
+            w.writerow(d)
     return p
 
 
