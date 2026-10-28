@@ -168,6 +168,20 @@ def _urls_trong_o(cell):
     return [one] if one and U.is_valid(one, 8) else []
 
 
+def _giai_thich_trang_chu(tab, dong, cot, url, that):
+    """Chu thich cho mot URL trang chu: nam o dau, vi sao khong tinh."""
+    co = "; ".join("cot %s: %s" % x for x in that[:3])
+    return ("KHONG TINH VAO SO LINK DA GIAO.  "
+            "Vi tri: tab '%s', dong %d, cot %s.  "
+            "URL '%s' chi la TRANG CHU cua site (chi co ten mien, khong co duong "
+            "dan bai viet / ho so).  "
+            "Vi sao khong tinh: cung dong %d co backlink that cung site (%s). "
+            "Cot %s chi cho biet link duoc dat tren site nao, khong phai cho dat link, "
+            "nen tool khong check va khong dem no la mot link ben cung cap giao. "
+            "Backlink that cua dong nay da duoc check, ket luan o 3 cot ben canh."
+            % (tab, dong, cot, url, dong, co, cot))
+
+
 # ---------------------------------------------------------------------- build
 def build(cfg, url="", thu_muc=None):
     """Doc nguon goc + ket qua check moi nhat -> du lieu de ghi ra xlsx.
@@ -208,6 +222,7 @@ def build(cfg, url="", thu_muc=None):
                 cot_tinh = set(idx)
 
         rows_out = []
+        tc_tab = []     # (dong, cot, url trang chu, [(cot, backlink that)])
         for i, row in enumerate(sheet_rows):
             ghis = []
             if not bo_qua:
@@ -221,11 +236,16 @@ def build(cfg, url="", thu_muc=None):
                         continue
                     for u_raw in _urls_trong_o(cell):
                         if u_raw in bo:
+                            # Backlink that cung dong: URL co duong dan, cung site.
+                            that = [(get_column_letter(j2 + 1), u2)
+                                    for j2, c2 in enumerate(row)
+                                    for u2 in _urls_trong_o(c2) if u2 not in bo]
+                            cot = get_column_letter(j + 1)
+                            tc_tab.append((i + 1, cot, u_raw, that))
                             ghis.append(_Ghi(
                                 "KHONG_TINH", "TRANG_CHU_CUNG_DONG",
-                                "URL nay chi la trang chu cua link dat cung dong "
-                                "(cung ten mien) - thong tin 'dat tren site nao', "
-                                "khong phai backlink nen khong tinh."))
+                                _giai_thich_trang_chu(sheet_name, i + 1, cot,
+                                                      u_raw, that)))
                             continue
                         if cot_tinh is not None and j not in cot_tinh:
                             ghis.append(_Ghi(
@@ -241,7 +261,7 @@ def build(cfg, url="", thu_muc=None):
             rows_out.append((list(row), ghis))
 
         tabs.append({"ten": sheet_name, "tier": tier, "bo_qua": bo_qua,
-                     "rows": rows_out, "ten_cot": ten_cot})
+                     "rows": rows_out, "ten_cot": ten_cot, "trang_chu": tc_tab})
 
     return tabs, file_kq, dem
 
@@ -286,7 +306,7 @@ def write_xlsx(tabs, path, cfg, file_kq=(), dem=None):
     wb = Workbook()
     wb.remove(wb.active)
 
-    _sheet_huong_dan(wb, cfg, file_kq, dem or Counter())
+    _sheet_huong_dan(wb, cfg, file_kq, dem or Counter(), tabs)
 
     dung_ten = set()
     for tab in tabs:
@@ -341,7 +361,7 @@ def _ten_hop_le(ten, dung):
     return s
 
 
-def _sheet_huong_dan(wb, cfg, file_kq, dem):
+def _sheet_huong_dan(wb, cfg, file_kq, dem, tabs=()):
     ws = wb.create_sheet("Doc truoc")
     ws.column_dimensions["A"].width = 26
     ws.column_dimensions["B"].width = 12
@@ -390,6 +410,49 @@ def _sheet_huong_dan(wb, cfg, file_kq, dem):
             ws.cell(row=rn, column=c).font = font if c == 1 else Font(color=font.color.rgb)
         ws.cell(row=rn, column=3).alignment = Alignment(wrap_text=True, vertical="top")
 
+    tong = sum(dem.values())
+    kt = dem.get("KHONG_TINH", 0)
+    ws.append([])
+    ws.append(["Tong cac nhan", tong, "= tong so URL trong file goc (moi URL mot nhan)."])
+    ws.append(["Tru 'Khong tinh'", tong - kt, "= so URL tool thuc su check/xu ly. "
+               "Chenh lech %d la URL trang chu o cot 'Ten Mien', khong phai backlink." % kt])
+    for rn in (ws.max_row - 1, ws.max_row):
+        ws.cell(row=rn, column=1).font = Font(bold=True)
+        ws.cell(row=rn, column=3).alignment = Alignment(wrap_text=True, vertical="top")
+
+    co_tc = [t for t in tabs if t.get("trang_chu")]
+    if co_tc:
+        ws.append([])
+        ws.append(["VI SAO %d URL TRONG FILE NHIEU HON %d LINK TOOL CHECK" % (tong, tong - kt)])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=13)
+        ws.append(["Tab", "So URL", "Nam o dau, vi sao khong tinh"])
+        for c in range(1, 4):
+            ws.cell(row=ws.max_row, column=c).fill = HDR_FILL
+            ws.cell(row=ws.max_row, column=c).font = HDR_FONT
+        for t in co_tc:
+            ds = t["trang_chu"]
+            cot_tc = sorted({x[1] for x in ds})
+            cot_that = sorted({c for x in ds for c, _u in x[3]})
+            vd = ds[0]
+            ws.append([t["ten"], len(ds),
+                       "Trong tab nay moi dong co 2 URL cung site: cot %s la TRANG CHU "
+                       "(chi co ten mien, cho biet link dat tren site nao) va cot %s la "
+                       "BACKLINK THAT (co duong dan cu the). Tool chi check cot %s; "
+                       "%d URL trang chu o cot %s khong phai backlink nen khong tinh. "
+                       "Vi du dong %d: cot %s = %s | cot %s = %s. "
+                       "Liet ke day du tung dong: loc cot 'Ma loi' = TRANG_CHU_CUNG_DONG "
+                       "trong tab nay."
+                       % (", ".join(cot_tc), ", ".join(cot_that), ", ".join(cot_that),
+                          len(ds), ", ".join(cot_tc), vd[0], vd[1], vd[2],
+                          vd[3][0][0] if vd[3] else "?", vd[3][0][1] if vd[3] else "?")])
+            rn = ws.max_row
+            for c in range(1, 4):
+                ws.cell(row=rn, column=c).fill = XAM
+                ws.cell(row=rn, column=c).alignment = Alignment(wrap_text=True, vertical="top")
+        ws.append(["Phep tinh", "", "%d URL trong file - %d URL trang chu = %d URL tool check."
+                   % (tong, kt, tong - kt)])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+        ws.cell(row=ws.max_row, column=3).font = Font(bold=True)
     ws.append([])
     ws.append(["", "", "Mot dong co nhieu URL thi cot 'Ket luan' ghi tong hop va "
                        "to mau theo link xau nhat; cot 'Chu thich' liet ke tung link."])

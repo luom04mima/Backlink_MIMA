@@ -592,7 +592,7 @@ def _do_doisoat(cfg, url="", thu_muc=None, output=None):
     if not file_kq:
         console.print(tui.warn_panel(
             "Chua co ket qua check nao",
-            "Cot 'Chet' dang bang 0 vi chua chay check, khong phai vi khong co "
+            "Cot 'Mat' dang bang 0 vi chua chay check, khong phai vi khong co "
             "link chet.\n\n[dim]Chay 'blcheck run' truoc roi doi soat lai.[/dim]"))
     if unmatched:
         console.print(tui.warn_panel(

@@ -513,7 +513,7 @@ Và file `results/<ngày>_<site>_doi-soat.xlsx` gồm 4 sheet:
 - **Đối soát** — bảng trên + khối "ĐỀ NGHỊ BÙ LẠI" đã cộng sẵn.
 - **Link trùng** — từng URL bị lặp: số lần xuất hiện, tab đặt lần đầu, tab lặp lại,
   trùng chéo tab hay trùng trong cùng một tab.
-- **Link chết - gửi họ** — từng URL chết kèm mã lỗi, chẩn đoán, cột **Yêu cầu**
+- **Link mat - gui ho** — từng URL Link mất (không gồm link chỉ sai tầng) kèm mã lỗi, chẩn đoán, cột **Yêu cầu**
   (`Thay link moi` / `Sua link`) và hai cột **Người xem thấy / Google thấy** làm
   bằng chứng khi họ nói "mở ra vẫn thấy link". Khối "ĐỀ NGHỊ BÙ LẠI" cũng tách
   sẵn bao nhiêu link phải thay mới, bao nhiêu chỉ cần sửa trên bài cũ.
@@ -553,16 +553,16 @@ là "lặp lại" phụ thuộc vào thứ tự tab trong Google Sheet.
 | Link giao trùng            | Cùng một URL đếm hai lần, chỉ tính được một                                                                                                                                                  |
 | Trỏ về money site          | Đó là link của chính mình, không phải backlink                                                                                                                                               |
 | URL hỏng                   | Ô dữ liệu không phải URL mở được                                                                                                                                                             |
-| Chết khi kiểm tra          | 404 / 410 / domain hết hạn / bài bị gỡ / **cần đăng nhập mới xem** / **robots.txt chặn Google** / **Google bị báo 404** / **giấu link với Google** / **vòng lặp chuyển hướng** |
+| Link mất khi kiểm tra (không gồm noindex) | 404 / 410 / domain hết hạn / bài bị gỡ / **cần đăng nhập mới xem** / **robots.txt chặn Google** / **Google bị báo 404** / **giấu link với Google** / **vòng lặp chuyển hướng** |
 | Không truyền giá trị (cột Noindex) | Trang `noindex` / canonical không có link — mã lỗi chính (dù kết luận là Link mất) hoặc ở cột `canh_bao_them`. **Nofollow không tính** — link vẫn đưa traffic về                         |
 
-Cột **Noindex** của file đối soát đếm mọi dòng `TRANG_NOINDEX` / `CANONICAL_KHAC`, kể cả khi đó là mã lỗi chính (kết luận Link mất). Cột **Link chết** chỉ còn trang chết thật. Mỗi dòng chỉ vào một khoản, tổng bù không đổi.
+Cột **Noindex** của file đối soát đếm mọi dòng `TRANG_NOINDEX` / `CANONICAL_KHAC`, kể cả khi đó là mã lỗi chính (kết luận Link mất). File đối soát dùng cùng tên gọi với file chú thích (không còn chữ "Link chết"): cột **Link mất (tổng)** = nhãn `Link mất` ở file chú thích = cột *mất không noindex* + cột *noindex*; **Link còn** không gồm `TRO_SAI_TANG` (tách riêng thành **Trỏ sai tầng**). Mỗi dòng chỉ vào một khoản, tổng bù không đổi.
 
 Nhóm **"phải check tay"** cố ý **không** đưa vào yêu cầu bù: tool chưa đọc được
 nội dung thật nên chưa có bằng chứng. Đòi bù bằng số liệu chưa xác minh là tự
 làm yếu lập luận của mình. Con số này hiện riêng ở khối "Chưa tính vào yêu cầu bù".
 
-Chưa chạy check bao giờ thì cột `Chết` bằng 0 và tool cảnh báo rõ — đó là vì
+Chưa chạy check bao giờ thì cột `Link mất` bằng 0 và tool cảnh báo rõ — đó là vì
 chưa đo, không phải vì không có link chết.
 
 ## File gốc có chú thích

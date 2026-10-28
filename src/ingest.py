@@ -202,7 +202,8 @@ class Stats(Counter):
 def _so_moi(ten, tier, bo_qua=""):
     """Mot dong so ke toan cho mot tab nguon."""
     return {"tab": ten, "tier": tier, "bo_qua": bo_qua,
-            "tho": 0, "url_hong": 0, "money_site": 0, "domain_loai": 0,
+            "tho": 0, "trang_chu": 0, "trang_chu_ds": [],
+            "url_hong": 0, "money_site": 0, "domain_loai": 0,
             "trung": 0, "trung_trong_tab": 0, "trung_voi_tab_khac": 0,
             "trung_voi": Counter(), "nhan": 0, "domain_rieng": 0}
 
@@ -344,6 +345,12 @@ def build(cfg, override_url: str = "", verbose: bool = True):
             for raw in found:
                 if raw in bo:
                     stats["trang_chu_cung_dong"] += 1
+                    # Van tinh vao "tho": ben cung cap dem ca o nay, bang doi
+                    # soat phai tru no ra thanh cot rieng thi so moi khop.
+                    so["tho"] += 1
+                    so["trang_chu"] += 1
+                    so["trang_chu_ds"].append(
+                        (dong, raw, [u for u in found if u not in bo]))
                     continue
                 so["tho"] += 1
                 u = U.clean_raw(raw)

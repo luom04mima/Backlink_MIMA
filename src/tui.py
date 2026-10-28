@@ -171,7 +171,8 @@ def doisoat_table(bang):
 
     c = lambda k: DS.cong(bang, k)
     # (khoa, tieu de, do rong, mau) - chi hien khi co so lieu
-    tuy_chon = [("trung", "Trung", 5, "dark_orange"),
+    tuy_chon = [("trang_chu", "T.chu", 5, "dark_orange"),
+                ("trung", "Trung", 5, "dark_orange"),
                 ("money_site", "Money", 5, "dark_orange"),
                 ("url_hong", "Hong", 4, "dark_orange"),
                 ("domain_loai", "Loai", 4, "dark_orange")]
@@ -185,7 +186,7 @@ def doisoat_table(bang):
     for _k, ten, w, st in hien:
         t.add_column(ten, justify="right", style=st, width=w)
     t.add_column("Nhan", justify="right", style="bold green", width=6)
-    t.add_column("Chet", justify="right", style="red", width=4)
+    t.add_column("Mat", justify="right", style="red", width=4)
     t.add_column("Doi bu", justify="right", style="bold red", width=6)
 
     canh = lambda n, st: ("[%s]%d[/%s]" % (st, n, st)) if n else "[dim]0[/dim]"
@@ -196,14 +197,14 @@ def doisoat_table(bang):
             continue
         t.add_row(d["tab"], str(d["tier"]), str(d["tho"]),
                   *[canh(d[k], st) for k, _t, _w, st in hien],
-                  str(d["nhan"]), canh(d["chet"], "red"),
+                  str(d["nhan"]), canh(d["mat"], "red"),
                   canh(d["bu"], "bold red"))
 
     b = lambda n: "[bold]%d[/bold]" % n
     t.add_section()
     t.add_row("[bold]TONG[/bold]", "", b(c("tho")),
               *[b(c(k)) for k, _t, _w, _s in hien],
-              b(c("nhan")), b(c("chet")), "[bold red]%d[/bold red]" % c("bu"))
+              b(c("nhan")), b(c("mat")), "[bold red]%d[/bold red]" % c("bu"))
     return t
 
 
@@ -212,17 +213,22 @@ def doisoat_panel(bang, trung=(), cfg=None):
     import doisoat as DS
 
     c = lambda k: DS.cong(bang, k)
-    tho, nhan = c("tho"), c("nhan")
+    tho, nhan, tc = c("tho"), c("nhan"), c("trang_chu")
+    that = tho - tc
 
     g = Table.grid(padding=(0, 2))
     g.add_column(style="dim", justify="right", width=24)
     g.add_column(justify="right", width=7)
     g.add_column()
-    g.add_row("Ben cung cap dua", "[bold]%d[/bold]" % tho, "[dim]dong link tho[/dim]")
+    g.add_row("Tong URL trong sheet", "[bold]%d[/bold]" % tho, "[dim]ke ca trang chu[/dim]")
+    if tc:
+        g.add_row("Tru trang chu cung dong", "[dark_orange]%d[/dark_orange]" % tc,
+                  "[dim]khong phai backlink[/dim]")
+    g.add_row("Backlink ben cung cap dua", "[bold]%d[/bold]" % that, "")
     g.add_row("Sau khi loc con", "[bold green]%d[/bold green]" % nhan,
-              "[dim]link that (%.1f%%)[/dim]" % (100.0 * nhan / (tho or 1)))
-    g.add_row("Hao hut", "[bold dark_orange]%d[/bold dark_orange]" % (tho - nhan),
-              "[dim]%.1f%%[/dim]" % (100.0 * (tho - nhan) / (tho or 1)))
+              "[dim]link that (%.1f%%)[/dim]" % (100.0 * nhan / (that or 1)))
+    g.add_row("Hao hut", "[bold dark_orange]%d[/bold dark_orange]" % (that - nhan),
+              "[dim]%.1f%%[/dim]" % (100.0 * (that - nhan) / (that or 1)))
     g.add_row("So domain rieng biet", "%d" % c("domain_rieng"),
               "[dim]bao nhieu site khac nhau that su[/dim]")
     if trung:
